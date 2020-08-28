@@ -1,0 +1,93 @@
+pipeline {
+	agent any
+
+	tools {
+		maven 'M3.6.3'
+	}
+
+	stages {
+		stage('Checkout') {
+			steps {
+				git url: 'https://github.com/sruthi777/petclinic.git'
+			}
+		}
+
+		stage('Maven Build') {
+			steps {
+				//echo "Hello, ${PERSON}, nice to meet you."
+				sh label: '', script: 'mvn clean package'
+			}
+		}
+		stage('SonarQube analysis') { 
+					steps {
+						withSonarQubeEnv('sonar') { 
+							sh '/var/lib/jenkins/tools/hudson.tasks.Maven_MavenInstallation/M3.6.3/bin/mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.3.0.603:sonar ' + 
+								'-Dsonar.projectKey=com.atmosphere:all:master ' +
+								'-Dsonar.login=admin ' +
+								'-Dsonar.password=admin ' +
+								'-Dsonar.language=java ' +
+								'-Dsonar.sources=. ' +
+								'-Dsonar.tests=. ' +
+								'-Dsonar.test.inclusions=**/*Test*/** ' +
+								'-Dsonar.exclusions=**/*Test*/**'
+						}
+					}
+					}
+					stage("SonarQube Quality Gate") { 
+					steps {
+					script {
+						timeout(time: 1, unit: 'HOURS') { 
+						def qg = waitForQualityGate() 
+							sleep 20
+							if (qg.status != 'OK') {
+								error "Pipeline aborted due to quality gate failure: ${qg.status}"
+							}
+						}
+					}
+					}
+					}
+		stage('Post Build Actions') {
+			parallel {
+				stage('Archive Artifacts') {
+					steps {
+						archiveArtifacts artifacts: 'target/*.?ar', followSymlinks: false
+					}
+				}
+
+				stage('Test Results') {
+					steps {
+						junit 'target/surefire-reports/*.xml'
+					}
+				}
+				stage('Nexus Uploader') {
+					steps {
+						nexusArtifactUploader artifacts: [[artifactId: 'spring-petclinic', classifier: '', file: 'target/petclinic.war', type: 'war']], credentialsId: 'nexuscred', groupId: 'org.springframework.samples', nexusUrl: '52.170.30.15:8081', nexusVersion: 'nexus2', protocol: 'http', repository: 'maven-releases', version: '4.2.6'
+					}
+				}
+			}
+		}
+		
+	}
+
+	post {
+		success {
+			notify('Success')
+		}
+		failure {
+			notify('Failed')
+		}
+		aborted {
+			notify('Aborted')
+		}
+	}
+
+}
+
+def notify(status){
+    emailext (
+      to: "spasam05@gmail.com",
+      subject: "${status}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+      body: """<p>${status}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
+        <p>Check console output at <a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a></p>""",
+    )
+}
