@@ -1,0 +1,22 @@
+provider "aws" {
+  region = "us-east-1"
+}
+[ec2-user@ip-172-31-53-174 ~]$ cat main.tf
+resource "aws_instance" "MyFirstInstance" {
+ ami = "ami-02354e95b39ca8dec"
+ instance_type = "t2.micro"
+ tags = {
+   Name = "EC2_Instance_Terraform"
+ }
+ user_data = <<-EOF
+                  #!/bin/bash
+                  sudo su
+                  yum -y install httpd
+                  echo "<p> My Instance! </p>" >> /var/www/html/index.html
+                  sudo systemctl enable httpd
+                  sudo systemctl start httpd
+                  EOF
+}
+ output "DNS" {
+  value = aws_instance.MyFirstInstance.public_dns
+}
